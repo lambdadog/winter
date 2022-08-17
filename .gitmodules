@@ -1,0 +1,18 @@
+[submodule "deps/zig-wlroots"]
+	path = deps/zig-wlroots
+	url = https://github.com/swaywm/zig-wlroots
+[submodule "deps/zig-pixman"]
+	path = deps/zig-pixman
+	url = https://github.com/ifreund/zig-pixman
+[submodule "deps/zig-xkbcommon"]
+	path = deps/zig-xkbcommon
+	url = https://github.com/ifreund/zig-xkbcommon
+[submodule "deps/zig-wayland"]
+	path = deps/zig-wayland
+	url = https://github.com/ifreund/zig-wayland
+[submodule "protocol/wlr-protocols"]
+	path = protocol/wlr-protocols
+	url = https://gitlab.freedesktop.org/wlroots/wlr-protocols.git
+[submodule "protocol/plasma-wayland-protocols"]
+	path = protocol/plasma-wayland-protocols
+	url = https://github.com/KDE/plasma-wayland-protocols
