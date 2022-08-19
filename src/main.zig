@@ -11,11 +11,16 @@ const C = @cImport({
 
 const ally = std.heap.c_allocator;
 
+// Are global for scheme binding purposes
+var server: Server = undefined;
+var scheme: Scheme = undefined;
+
 // Thanks to wrapper.zig, we start in guile mode.
 pub fn main() anyerror!void {
     wlr.log.init(.debug);
 
-    var server: Server = undefined;
+    scheme.init();
+
     try server.init();
     defer server.deinit();
 
@@ -24,9 +29,149 @@ pub fn main() anyerror!void {
 
     try server.backend.start();
 
+    Scheme.load();
+
     std.log.info("Running compositor on WAYLAND_DISPLAY={s}", .{socket});
     server.wl_server.run();
 }
+
+const Scheme = struct {
+    view_type: C.SCM,
+    output_type: C.SCM,
+
+    view_map_hooks: C.SCM,
+
+    fn init(self: *Scheme) void {
+        self.* = .{
+            .view_type = C.scm_make_foreign_object_type(
+                C.scm_from_utf8_symbol("view"),
+                C.scm_list_1(
+                    C.scm_from_utf8_symbol("ptr"),
+                ),
+                null,
+            ),
+            .output_type = C.scm_make_foreign_object_type(
+                C.scm_from_utf8_symbol("output"),
+                C.scm_list_1(
+                    C.scm_from_utf8_symbol("ptr"),
+                ),
+                null,
+            ),
+
+            .view_map_hooks = C.scm_make_hook(C.scm_from_uint(1)),
+        };
+
+        _ = C.scm_c_define("view-map-hooks", self.view_map_hooks);
+
+        _ = C.scm_c_define_gsubr(
+            "views",
+            0,
+            0,
+            0,
+            @intToPtr(?*anyopaque, @ptrToInt(views)),
+        );
+
+        _ = C.scm_c_define_gsubr(
+            "view-enable!",
+            1,
+            0,
+            0,
+            @intToPtr(?*anyopaque, @ptrToInt(viewEnable)),
+        );
+
+        _ = C.scm_c_define_gsubr(
+            "view-disable!",
+            1,
+            0,
+            0,
+            @intToPtr(?*anyopaque, @ptrToInt(viewDisable)),
+        );
+
+        _ = C.scm_c_define_gsubr(
+            "view-focus!",
+            1,
+            0,
+            0,
+            @intToPtr(?*anyopaque, @ptrToInt(viewFocus)),
+        );
+
+        _ = C.scm_c_define_gsubr(
+            "view-name",
+            1,
+            0,
+            0,
+            @intToPtr(?*anyopaque, @ptrToInt(viewName)),
+        );
+    }
+
+    fn load() void {
+        _ = C.scm_c_primitive_load("./scheme/init.scm");
+    }
+
+    fn viewEnable(view_scm: C.SCM) callconv(.C) C.SCM {
+        var view = @ptrCast(
+            *View,
+            @alignCast(@alignOf(*View), C.scm_foreign_object_ref(view_scm, 0).?),
+        );
+        view.setEnabled(true);
+        return view_scm;
+    }
+
+    fn viewDisable(view_scm: C.SCM) callconv(.C) C.SCM {
+        var view = @ptrCast(
+            *View,
+            @alignCast(@alignOf(*View), C.scm_foreign_object_ref(view_scm, 0).?),
+        );
+        view.setEnabled(false);
+        return view_scm;
+    }
+
+    fn viewFocus(view_scm: C.SCM) callconv(.C) C.SCM {
+        var view = @ptrCast(
+            *View,
+            @alignCast(@alignOf(*View), C.scm_foreign_object_ref(view_scm, 0).?),
+        );
+        server.focusView(view);
+        return view_scm;
+    }
+
+    fn viewName(view_scm: C.SCM) callconv(.C) C.SCM {
+        var view = @ptrCast(
+            *View,
+            @alignCast(@alignOf(*View), C.scm_foreign_object_ref(view_scm, 0).?),
+        );
+        return C.scm_from_utf8_string(
+            @ptrCast([*c]const u8, view.xdg_surface.role_data.toplevel.title.?),
+        );
+    }
+
+    // scm_cons uses scm_cell which translates brokenly, so we use the
+    // scm_make_list and scm_list_set_x instead.
+    fn views() callconv(.C) C.SCM {
+        var iter = server.views.iterator(.forward);
+        var index: c_uint = 0;
+        var list: C.SCM = C.scm_make_list(
+            C.scm_from_uint(@truncate(c_uint, server.views.length())),
+            null,
+        );
+        while (iter.next()) |view| {
+            _ = C.scm_list_set_x(
+                list,
+                C.scm_from_uint(index),
+                Scheme.makeView(view),
+            );
+            index += 1;
+        }
+        return list;
+    }
+
+    fn makeView(view: *View) C.SCM {
+        return C.scm_make_foreign_object_1(
+            scheme.view_type,
+            view,
+        );
+    }
+};
 
 // TODO: no input yet
 const Server = struct {
@@ -122,11 +267,7 @@ const Server = struct {
             wlr_output.commit() catch return;
         }
 
-        // Doesn't this leak space?
-        //
-        // I guess it doesn't matter that much unless you keep
-        // unplugging and plugging your monitors, but still...
-        const output = Output.init(self, wlr_output) catch {
+        const output = Output.init(wlr_output) catch {
             std.log.err("Failed to create a new output!", .{});
             return;
         };
@@ -137,16 +278,14 @@ const Server = struct {
     }
 
     fn onNewXdgSurface(
-        listener: *wl.Listener(*wlr.XdgSurface),
+        _: *wl.Listener(*wlr.XdgSurface),
         xdg_surface: *wlr.XdgSurface,
     ) void {
-        const self = @fieldParentPtr(Server, "new_xdg_surface_listener", listener);
-
-        _ = self;
+        //const self = @fieldParentPtr(Server, "new_xdg_surface_listener", listener);
 
         switch (xdg_surface.role) {
             .toplevel => {
-                _ = View.init(self, xdg_surface) catch {
+                _ = View.init(xdg_surface) catch {
                     std.log.err("Failed to create a new view!", .{});
                     return;
                 };
@@ -163,18 +302,16 @@ const Server = struct {
 };
 
 const Output = struct {
-    server: *Server,
     link: wl.list.Link = undefined,
     wlr_output: *wlr.Output,
 
     frame_listener: wl.Listener(*wlr.Output),
     destroy_listener: wl.Listener(*wlr.Output),
 
-    fn init(server: *Server, wlr_output: *wlr.Output) !*Output {
+    fn init(wlr_output: *wlr.Output) !*Output {
         var self = try ally.create(Output);
 
         self.* = .{
-            .server = server,
             .wlr_output = wlr_output,
 
             .frame_listener = wl.Listener(*wlr.Output).init(onFrame),
@@ -193,7 +330,7 @@ const Output = struct {
     ) void {
         const self = @fieldParentPtr(Output, "frame_listener", listener);
 
-        const scene_output = self.server.scene.getSceneOutput(self.wlr_output).?;
+        const scene_output = server.scene.getSceneOutput(self.wlr_output).?;
         _ = scene_output.commit();
 
         var now: std.os.timespec = undefined;
@@ -217,7 +354,6 @@ const Output = struct {
 };
 
 const View = struct {
-    server: *Server,
     link: wl.list.Link = undefined,
     xdg_surface: *wlr.XdgSurface,
     scene_node: *wlr.SceneNode,
@@ -232,12 +368,11 @@ const View = struct {
     request_move_listener: wl.Listener(*wlr.XdgToplevel.event.Move),
     request_resize_listener: wl.Listener(*wlr.XdgToplevel.event.Resize),
 
-    fn init(server: *Server, xdg_surface: *wlr.XdgSurface) !*View {
+    fn init(xdg_surface: *wlr.XdgSurface) !*View {
         var self = try ally.create(View);
         errdefer ally.destroy(self);
 
         self.* = .{
-            .server = server,
             .xdg_surface = xdg_surface,
             .scene_node = try server.scene.node.createSceneXdgSurface(xdg_surface),
 
@@ -262,14 +397,25 @@ const View = struct {
         return self;
     }
 
+    fn setEnabled(self: *View, enabled: bool) void {
+        //std.debug.print("{*}.setEnabled: {}\n", .{ self, enabled });
+        self.scene_node.setEnabled(enabled);
+    }
+
+    // callbacks
     fn onMap(
         listener: *wl.Listener(*wlr.XdgSurface),
         _: *wlr.XdgSurface,
     ) void {
         const self = @fieldParentPtr(View, "map_listener", listener);
 
-        self.server.views.prepend(self);
-        self.server.focusView(self);
+        // setEnabled doesn't work until the view is mapped, so we
+        // disable now. Views are disabled by default and must be
+        // enabled in scheme.
+        self.setEnabled(false);
+        server.views.prepend(self);
+
+        _ = C.scm_run_hook(scheme.view_map_hooks, C.scm_list_1(Scheme.makeView(self)));
     }
 
     fn onUnmap(
@@ -287,7 +433,6 @@ const View = struct {
     ) void {
         const self = @fieldParentPtr(View, "destroy_listener", listener);
 
-        // TODO: find a way to group these to avoid boilerplate
         self.map_listener.link.remove();
         self.unmap_listener.link.remove();
         self.destroy_listener.link.remove();
