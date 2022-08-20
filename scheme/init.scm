@@ -5,12 +5,12 @@
   (enable-view! view)
   (focus-view! view))
 
-(add-hook! view-on-map-hooks
+(add-hook! view-on-map-hook
 	   view:on-map-default)
 
 (define (debug:list-all-views _)
   (display "All views:\n")
   (pretty-print (views)))
 
-(add-hook! view-on-map-hooks
+(add-hook! view-on-map-hook
 	   debug:list-all-views)

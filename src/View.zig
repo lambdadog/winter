@@ -11,9 +11,9 @@ const Server = @import("Server.zig");
 
 var scm_view_type: C.SCM = undefined;
 
-var scm_view_on_map_hooks: C.SCM = undefined;
-var scm_view_on_unmap_hooks: C.SCM = undefined;
-var scm_view_on_destroy_hooks: C.SCM = undefined;
+var scm_view_on_map_hook: C.SCM = undefined;
+var scm_view_on_unmap_hook: C.SCM = undefined;
+var scm_view_on_destroy_hook: C.SCM = undefined;
 
 pub fn scmInit() void {
     scm_view_type = C.scm_make_foreign_object_type(
@@ -24,12 +24,12 @@ pub fn scmInit() void {
         null,
     );
 
-    scm_view_on_map_hooks = C.scm_make_hook(C.scm_from_uint(1));
-    _ = C.scm_c_define("view-on-map-hooks", scm_view_on_map_hooks);
-    scm_view_on_unmap_hooks = C.scm_make_hook(C.scm_from_uint(1));
-    _ = C.scm_c_define("view-on-unmap-hooks", scm_view_on_unmap_hooks);
-    scm_view_on_destroy_hooks = C.scm_make_hook(C.scm_from_uint(1));
-    _ = C.scm_c_define("view-on-destroy-hooks", scm_view_on_destroy_hooks);
+    scm_view_on_map_hook = C.scm_make_hook(C.scm_from_uint(1));
+    _ = C.scm_c_define("view-on-map-hook", scm_view_on_map_hook);
+    scm_view_on_unmap_hook = C.scm_make_hook(C.scm_from_uint(1));
+    _ = C.scm_c_define("view-on-unmap-hook", scm_view_on_unmap_hook);
+    scm_view_on_destroy_hook = C.scm_make_hook(C.scm_from_uint(1));
+    _ = C.scm_c_define("view-on-destroy-hook", scm_view_on_destroy_hook);
 
     _ = C.scm_c_define_gsubr(
         "views",
@@ -154,7 +154,7 @@ fn onMap(
     self.setEnabled(false);
 
     _ = C.scm_run_hook(
-        scm_view_on_map_hooks,
+        scm_view_on_map_hook,
         C.scm_list_1(
             makeScmView(self),
         ),
@@ -170,7 +170,7 @@ fn onUnmap(
     self.mapped = false;
 
     _ = C.scm_run_hook(
-        scm_view_on_unmap_hooks,
+        scm_view_on_unmap_hook,
         C.scm_list_1(
             makeScmView(self),
         ),
@@ -184,7 +184,7 @@ fn onDestroy(
     const self = @fieldParentPtr(View, "destroy_listener", listener);
 
     _ = C.scm_run_hook(
-        scm_view_on_destroy_hooks,
+        scm_view_on_destroy_hook,
         C.scm_list_1(
             makeScmView(self),
         ),
