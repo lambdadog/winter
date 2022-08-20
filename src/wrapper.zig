@@ -3,7 +3,7 @@ const C = @cImport({
     @cInclude("libguile.h");
 });
 
-const true_main = @import("main.zig").main;
+const guile_mode_main = @import("main.zig").main;
 
 pub fn main() anyerror!void {
     _ = C.scm_with_guile(innerMain, null);
@@ -15,12 +15,12 @@ fn innerMain(_: ?*anyopaque) callconv(.C) ?*anyopaque {
     // be happy to have done this, but for now it's probably
     // unnecessary. I just don't want to have to think about the
     // wrapper code at all.
-    switch (@typeInfo(@TypeOf(true_main))) {
+    switch (@typeInfo(@TypeOf(guile_mode_main))) {
         .Fn => |fn_info| {
             if (fn_info.return_type) |return_type| {
                 switch (@typeInfo(return_type)) {
-                    .Void => true_main(),
-                    .ErrorUnion => true_main() catch |err| {
+                    .Void => guile_mode_main(),
+                    .ErrorUnion => guile_mode_main() catch |err| {
                         std.debug.print("{}\n", .{err});
                         if (@errorReturnTrace()) |trace| {
                             std.debug.dumpStackTrace(trace.*);
@@ -29,10 +29,10 @@ fn innerMain(_: ?*anyopaque) callconv(.C) ?*anyopaque {
                     else => unreachable,
                 }
             } else {
-                true_main();
+                guile_mode_main();
             }
         },
-        else => unreachable,
+        else => @compileError("main must be a function"),
     }
     return null;
 }
