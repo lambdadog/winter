@@ -1,9 +1,19 @@
 const std = @import("std");
-
 const wlr = @import("wlroots");
 
+const Output = @import("Output.zig");
+const View = @import("View.zig");
+const C = @import("C.zig");
+
 const Server = @import("Server.zig");
-const scheme = @import("scheme.zig");
+
+fn scmInit() void {
+    Server.scmInit();
+    Output.scmInit();
+    View.scmInit();
+
+    _ = C.scm_c_primitive_load("./scheme/init.scm");
+}
 
 pub fn main() anyerror!void {
     wlr.log.init(.debug);
@@ -16,7 +26,7 @@ pub fn main() anyerror!void {
 
     try server.backend.start();
 
-    scheme.init();
+    scmInit();
 
     std.log.info("Running compositor on WAYLAND_DISPLAY={s}", .{socket});
     server.wl_server.run();
