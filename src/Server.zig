@@ -10,17 +10,16 @@ const C = @import("C.zig");
 
 const ally = std.heap.c_allocator;
 
-// const Output = @import("Output.zig");
+const Output = @import("Output.zig");
 // const View = @import("View.zig");
 // const Keyboard = @import("Keyboard.zig");
 // const Cursor = @import("Cursor.zig");
 
-var scm_module: C.SCM = undefined;
 var scm_server_type: C.SCM = undefined;
 
 pub fn scm_init() void {
     std.log.info("Setting up (winter server internal)", .{});
-    scm_module = C.scm_c_define_module(
+    _ = C.scm_c_define_module(
         "wl server internal",
         scm_initModule,
         null,
@@ -45,6 +44,14 @@ fn scm_initModule(_: ?*anyopaque) callconv(.C) void {
     );
 
     _ = C.scm_c_define_gsubr(
+        "server-outputs",
+        1,
+        0,
+        0,
+        @intToPtr(?*anyopaque, @ptrToInt(scm_serverOutputs)),
+    );
+
+    _ = C.scm_c_define_gsubr(
         "server-socket",
         1,
         0,
@@ -64,8 +71,9 @@ fn scm_initModule(_: ?*anyopaque) callconv(.C) void {
     // scm_module_export instead.
     _ = C.scm_module_export(
         C.scm_current_module(),
-        C.scm_list_3(
+        C.scm_list_4(
             C.scm_from_utf8_symbol("make-server"),
+            C.scm_from_utf8_symbol("server-outputs"),
             C.scm_from_utf8_symbol("server-socket"),
             C.scm_from_utf8_symbol("run-server"),
         ),
@@ -74,11 +82,26 @@ fn scm_initModule(_: ?*anyopaque) callconv(.C) void {
 
 fn scm_makeServer() callconv(.C) C.SCM {
     const server = Server.create() catch {
-        // will error
-        return null;
+        // TODO: return scheme error
+        return C.SCM_BOOL_F;
     };
 
     return serverToScm(server);
+}
+
+fn scm_serverOutputs(scm_server: C.SCM) callconv(.C) C.SCM {
+    const server = scmToServer(scm_server);
+
+    var list = C.SCM_EOL;
+    var iter = server.outputs.iterator(.reverse);
+    while (iter.next()) |output| {
+        list = C.scm_cons(
+            Output.outputToScm(output),
+            list,
+        );
+    }
+
+    return list;
 }
 
 fn scm_serverSocket(scm_server: C.SCM) callconv(.C) C.SCM {
@@ -92,7 +115,7 @@ fn scm_runServer(scm_server: C.SCM) callconv(.C) C.SCM {
 
     server.backend.start() catch {
         // will error
-        return null;
+        return C.SCM_BOOL_F;
     };
 
     server.wl_server.run();
@@ -137,7 +160,7 @@ output_layout: *wlr.OutputLayout,
 xdg_shell: *wlr.XdgShell,
 seat: *wlr.Seat,
 
-// outputs: wl.list.Head(Output, "link") = undefined,
+outputs: wl.list.Head(Output, "link") = undefined,
 // views: wl.list.Head(View, "link") = undefined,
 // keyboards: wl.list.Head(Keyboard, "link") = undefined,
 // cursor: Cursor = undefined,
@@ -193,7 +216,7 @@ pub fn create() !*Server {
     // self.xdg_shell.events.new_surface.add(&self.new_xdg_surface_listener);
     // self.backend.events.new_input.add(&self.new_input_device_listener);
 
-    // self.outputs.init();
+    self.outputs.init();
     // self.views.init();
     // self.keyboards.init();
     // self.cursor.init(self.seat);
@@ -216,9 +239,6 @@ fn onNewOutput(
 
     if (!wlr_output.initRender(self.allocator, self.renderer)) {
         std.log.err("Failed to init renderer for output.", .{});
-        if (@errorReturnTrace()) |trace| {
-            std.debug.dumpStackTrace(trace.*);
-        }
         return;
     }
 
@@ -234,14 +254,14 @@ fn onNewOutput(
         };
     }
 
-    // onst output = Output.create(self, wlr_output) catch |err| {
-    //     std.log.err("Failed to create output:\n{}", .{err});
-    //     if (@errorReturnTrace()) |trace| {
-    //         std.debug.dumpStackTrace(trace.*);
-    //     }
-    //     return;
-    // };
+    const output = Output.create(self, wlr_output) catch |err| {
+        std.log.err("Failed to create output:\n{}", .{err});
+        if (@errorReturnTrace()) |trace| {
+            std.debug.dumpStackTrace(trace.*);
+        }
+        return;
+    };
 
-    // self.outputs.prepend(output);
+    self.outputs.prepend(output);
     self.output_layout.addAuto(wlr_output);
 }
