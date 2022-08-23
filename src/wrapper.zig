@@ -1,7 +1,11 @@
+//! Since Guile requires programs embedding it to enter [guile
+//! mode](https://www.gnu.org/software/guile/manual/html_node/Initialization.html),
+//! wrapper.zig's `main` is the actual entrypoint of our program and it
+//! enters guile mode with `scm_with_guile` before calling main.zig's
+//! `main` function.
+
 const std = @import("std");
-const C = @cImport({
-    @cInclude("libguile.h");
-});
+const C = @import("C.zig");
 
 const guile_mode_main = @import("main.zig").main;
 
@@ -9,12 +13,7 @@ pub fn main() anyerror!void {
     _ = C.scm_with_guile(innerMain, null);
 }
 
-// A small sacrifice to appease the scheme gods...
 fn innerMain(_: ?*anyopaque) callconv(.C) ?*anyopaque {
-    // If I ever get to the point where I'm handling all errors I'll
-    // be happy to have done this, but for now it's probably
-    // unnecessary. I just don't want to have to think about the
-    // wrapper code at all.
     switch (@typeInfo(@TypeOf(guile_mode_main))) {
         .Fn => |fn_info| {
             if (fn_info.return_type) |return_type| {
