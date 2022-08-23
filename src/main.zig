@@ -9,7 +9,7 @@ const ally = std.heap.c_allocator;
 
 fn scm_init() void {
     Server.scm_init();
-    // Output.scmInit();
+    Output.scm_init();
     // View.scmInit();
 
     // _ = C.scm_c_primitive_load("./scheme/init.scm");
