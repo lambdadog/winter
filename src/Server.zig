@@ -114,7 +114,7 @@ fn scm_runServer(scm_server: C.SCM) callconv(.C) C.SCM {
     const server = scmToServer(scm_server);
 
     server.backend.start() catch {
-        // will error
+        // TODO: return scheme error
         return C.SCM_BOOL_F;
     };
 
