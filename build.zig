@@ -1,12 +1,28 @@
 const std = @import("std");
 const Builder = std.build.Builder;
 const Pkg = std.build.Pkg;
+const InstallDirectoryOptions = std.build.InstallDirectoryOptions;
 
 const ScanProtocolsStep = @import("deps/zig-wayland/build.zig").ScanProtocolsStep;
 
 pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
+
+    const options = b.addOptions();
+
+    const scheme: InstallDirectoryOptions = .{
+        .source_dir = "scheme",
+        .install_dir = .prefix,
+        .install_subdir = "share/winter",
+    };
+
+    b.installDirectory(scheme);
+    options.addOption(
+        []const u8,
+        "scheme_dir",
+        b.getInstallPath(scheme.install_dir, scheme.install_subdir),
+    );
 
     const scanner = ScanProtocolsStep.create(b);
     scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
@@ -34,6 +50,8 @@ pub fn build(b: *Builder) void {
     const exe = b.addExecutable("winter", "src/wrapper.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
+
+    exe.addOptions("build_options", options);
 
     exe.addCSourceFiles(&.{
         "src/glue.c",

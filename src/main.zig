@@ -1,6 +1,8 @@
 const std = @import("std");
 const wlr = @import("wlroots");
 
+const build_options = @import("build_options");
+
 const C = @import("C.zig");
 
 const Server = @import("Server.zig");
@@ -71,23 +73,19 @@ pub fn main() anyerror!void {
 
     scm_init();
 
-    // For debugging purposes, we use $CWD/scheme/
-    const cwd = try std.process.getCwdAlloc(ally);
-    defer ally.free(cwd);
-
     const scm_load_path = C.scm_c_lookup("%load-path");
 
     _ = C.scm_variable_set_x(
         scm_load_path,
         C.scm_cons(
-            C.scm_from_utf8_string(
-                try std.fs.path.joinZ(ally, &.{ cwd, "scheme" }),
-            ),
+            C.scm_from_utf8_string(build_options.scheme_dir.ptr),
             C.scm_variable_ref(scm_load_path),
         ),
     );
 
     // We want an error if this fails to load, so we don't use a
     // handler.
-    _ = C.scm_c_primitive_load("./scheme/startup.scm");
+    _ = C.scm_c_primitive_load(
+        try std.fs.path.joinZ(ally, &.{ build_options.scheme_dir, "startup.scm" }),
+    );
 }
