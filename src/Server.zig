@@ -15,10 +15,9 @@ const Output = @import("Output.zig");
 // const Keyboard = @import("Keyboard.zig");
 // const Cursor = @import("Cursor.zig");
 
-var scm_server_type: C.SCM = undefined;
+pub var scm_server_type: C.SCM = undefined;
 
 pub fn scm_init() void {
-    std.log.info("Setting up (winter server internal)", .{});
     _ = C.scm_c_define_module(
         "wl server internal",
         scm_initModule,
@@ -166,6 +165,7 @@ outputs: wl.list.Head(Output, "link") = undefined,
 // cursor: Cursor = undefined,
 
 new_output_listener: wl.Listener(*wlr.Output),
+new_output_function: ?C.SCM = null,
 // new_xdg_surface_listener: wl.Listener(*wlr.XdgSurface),
 // new_input_device_listener: wl.Listener(*wlr.InputDevice),
 
@@ -231,6 +231,36 @@ pub fn destroy(self: *Server) void {
     ally.destroy(self);
 }
 
+const Events = enum {
+    new_output,
+};
+
+pub fn bindScmFunction(
+    self: *Server,
+    scm_event_symbol: C.SCM,
+    scm_procedure: C.SCM,
+) C.SCM {
+    inline for ([_][2][:0]const u8{
+        // symbol name   field name
+        .{ "new-output", "new_output_function" },
+    }) |event| {
+        if (C.SCM_BOOL_T == C.scm_eqv_p(
+            scm_event_symbol,
+            C.scm_from_utf8_symbol(event[0].ptr),
+        )) {
+            if (self.new_output_function) |scm_fn| {
+                _ = C.scm_gc_unprotect_object(scm_fn);
+            }
+            @field(self, event[1]) = C.scm_gc_protect_object(
+                scm_procedure,
+            );
+            return scm_procedure;
+        }
+    }
+    // else:
+    return C.SCM_BOOL_F;
+}
+
 fn onNewOutput(
     listener: *wl.Listener(*wlr.Output),
     wlr_output: *wlr.Output,
@@ -264,4 +294,13 @@ fn onNewOutput(
 
     self.outputs.prepend(output);
     self.output_layout.addAuto(wlr_output);
+
+    // FIXME: handle errors so a scheme error doesn't cause a crash.
+    if (self.new_output_function) |scm_fn| {
+        _ = C.scm_call_2(
+            scm_fn,
+            serverToScm(self),
+            Output.outputToScm(output),
+        );
+    }
 }

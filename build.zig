@@ -35,6 +35,10 @@ pub fn build(b: *Builder) void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
 
+    exe.addCSourceFiles(&.{
+        "src/glue.c",
+    }, &.{});
+
     exe.linkLibC();
 
     exe.addPackage(wayland);

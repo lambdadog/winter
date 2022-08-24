@@ -12,7 +12,7 @@ const ally = std.heap.c_allocator;
 
 const Server = @import("Server.zig");
 
-var scm_output_type: C.SCM = undefined;
+pub var scm_output_type: C.SCM = undefined;
 
 pub fn scm_init() void {
     _ = C.scm_c_define_module(
@@ -78,6 +78,20 @@ pub fn create(server: *Server, wlr_output: *wlr.Output) !*Output {
     wlr_output.events.destroy.add(&self.destroy_listener);
 
     return self;
+}
+
+pub fn bindScmFunction(
+    self: *Output,
+    scm_event_symbol: C.SCM,
+    scm_procedure: C.SCM,
+) C.SCM {
+    _ = self;
+    _ = scm_event_symbol;
+    _ = scm_procedure;
+
+    // Currently nothing worth binding.
+
+    return C.SCM_BOOL_F;
 }
 
 fn onFrame(
