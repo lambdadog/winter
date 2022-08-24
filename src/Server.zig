@@ -166,6 +166,8 @@ pub fn serverToScm(server: *Server) C.SCM {
 }
 
 pub fn scmToServer(scm_server: C.SCM) *Server {
+    C.scm_assert_foreign_object_type(scm_server_type, scm_server);
+
     return @ptrCast(
         *Server,
         @alignCast(

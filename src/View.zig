@@ -76,6 +76,8 @@ pub fn viewToScm(view: *View) C.SCM {
 }
 
 pub fn scmToView(scm_view: C.SCM) *View {
+    C.scm_assert_foreign_object_type(scm_view_type, scm_view);
+
     return @ptrCast(
         *View,
         @alignCast(

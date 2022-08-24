@@ -41,6 +41,8 @@ pub fn outputToScm(output: *Output) C.SCM {
 }
 
 pub fn scmToOutput(scm_output: C.SCM) *Output {
+    C.scm_assert_foreign_object_type(scm_output_type, scm_output);
+
     return @ptrCast(
         *Output,
         @alignCast(
