@@ -13,7 +13,7 @@ const ally = std.heap.c_allocator;
 const Output = @import("Output.zig");
 const View = @import("View.zig");
 // const Keyboard = @import("Keyboard.zig");
-// const Cursor = @import("Cursor.zig");
+const Cursor = @import("Cursor.zig");
 
 pub var scm_server_type: C.SCM = undefined;
 
@@ -205,13 +205,13 @@ seat: *wlr.Seat,
 outputs: wl.list.Head(Output, "link") = undefined,
 views: wl.list.Head(View, "link") = undefined,
 // keyboards: wl.list.Head(Keyboard, "link") = undefined,
-// cursor: Cursor = undefined,
+cursor: Cursor = undefined,
 
 new_output_listener: wl.Listener(*wlr.Output),
 on_new_output_function: ?C.SCM = null,
 new_xdg_surface_listener: wl.Listener(*wlr.XdgSurface),
 on_new_view_function: ?C.SCM = null,
-// new_input_device_listener: wl.Listener(*wlr.InputDevice),
+new_input_listener: wl.Listener(*wlr.InputDevice),
 
 pub fn create() !*Server {
     const self = try ally.create(Server);
@@ -242,9 +242,9 @@ pub fn create() !*Server {
         .new_xdg_surface_listener = wl.Listener(*wlr.XdgSurface).init(
             onNewXdgSurface,
         ),
-        // .new_input_device_listener = wl.Listener(*wlr.InputDevice).init(
-        //     onNewInputDevice,
-        // ),
+        .new_input_listener = wl.Listener(*wlr.InputDevice).init(
+            onNewInput,
+        ),
     };
 
     // Copy the socket name into our server struct so it isn't
@@ -259,12 +259,12 @@ pub fn create() !*Server {
 
     self.backend.events.new_output.add(&self.new_output_listener);
     self.xdg_shell.events.new_surface.add(&self.new_xdg_surface_listener);
-    // self.backend.events.new_input.add(&self.new_input_device_listener);
+    self.backend.events.new_input.add(&self.new_input_listener);
 
     self.outputs.init();
     self.views.init();
     // self.keyboards.init();
-    // self.cursor.init(self.seat);
+    try self.cursor.init(self);
 
     return self;
 }
@@ -303,6 +303,42 @@ pub fn bindScmFunction(
     return C.SCM_BOOL_F;
 }
 
+pub const ViewAtResult = struct {
+    view: *View,
+    surface: *wlr.Surface,
+    relative_x: f64,
+    relative_y: f64,
+};
+
+pub fn viewAt(self: *Server, absolute_x: f64, absolute_y: f64) ?ViewAtResult {
+    var relative_y: f64 = undefined;
+    var relative_x: f64 = undefined;
+
+    if (self.scene.node.at(
+        absolute_x,
+        absolute_y,
+        &relative_x,
+        &relative_y,
+    )) |node| {
+        if (node.type != .surface) return null;
+        const surface = wlr.SceneSurface.fromNode(node).surface;
+
+        var it: ?*wlr.SceneNode = node;
+        while (it) |n| : (it = n.parent) {
+            if (@intToPtr(?*View, n.data)) |view| {
+                return ViewAtResult{
+                    .view = view,
+                    .surface = surface,
+                    .relative_x = relative_x,
+                    .relative_y = relative_y,
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
 fn onNewOutput(
     listener: *wl.Listener(*wlr.Output),
     wlr_output: *wlr.Output,
@@ -325,6 +361,8 @@ fn onNewOutput(
             return;
         };
     }
+
+    //_ = try self.cursor.cursor_mgr.load(wlr_output.scale);
 
     const output = Output.create(self, wlr_output) catch |err| {
         std.log.err("Failed to create output:\n{}", .{err});
@@ -398,4 +436,20 @@ fn onNewXdgSurface(
         },
         .none => unreachable,
     }
+}
+
+fn onNewInput(
+    listener: *wl.Listener(*wlr.InputDevice),
+    input_device: *wlr.InputDevice,
+) void {
+    const self = @fieldParentPtr(Server, "new_input_listener", listener);
+    switch (input_device.type) {
+        .pointer => self.cursor.attachInputDevice(input_device),
+        else => {},
+    }
+
+    self.seat.setCapabilities(.{
+        .pointer = true,
+        .keyboard = false,
+    });
 }

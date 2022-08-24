@@ -69,7 +69,7 @@ fn scm_bindX(
 }
 
 pub fn main() anyerror!void {
-    wlr.log.init(.info);
+    wlr.log.init(.debug);
 
     scm_init();
 
