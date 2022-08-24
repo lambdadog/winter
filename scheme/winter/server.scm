@@ -4,16 +4,27 @@
 		#:prefix wl:)
   #:use-module ((wl server)
 		#:select (make-server
+			  server-outputs
+			  server-views
 			  server-socket
 			  run-server))
   #:use-module ((wl view)
 		#:select (view-enable!))
   #:use-module ((ice-9 pretty-print)
 		#:select ((pretty-print . pp)))
-  #:export (run))
+  #:export (server
+	    outputs
+	    views
+	    run))
 
 (define server
   (make-parameter (make-server)))
+
+(define (outputs)
+  (server-outputs (server)))
+
+(define (views)
+  (server-views (server)))
 
 (define (run)
   (let ([server (server)])
