@@ -16,7 +16,7 @@ pub var scm_output_type: C.SCM = undefined;
 
 pub fn scm_init() void {
     _ = C.scm_c_define_module(
-        "winter output internal",
+        "wl output internal",
         scm_initModule,
         null,
     );

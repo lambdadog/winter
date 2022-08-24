@@ -5,6 +5,7 @@ const C = @import("C.zig");
 
 const Server = @import("Server.zig");
 const Output = @import("Output.zig");
+const View = @import("View.zig");
 
 const ally = std.heap.c_allocator;
 
@@ -17,7 +18,7 @@ fn scm_init() void {
 
     Server.scm_init();
     Output.scm_init();
-    // View.scmInit();
+    View.scm_init();
 
     // _ = C.scm_c_primitive_load("./scheme/init.scm");
 }
@@ -52,6 +53,12 @@ fn scm_bindX(
     }
     if (C.scm_is_a_p(scm_wl_object, Output.scm_output_type)) {
         return Output.scmToOutput(scm_wl_object).bindScmFunction(
+            scm_event_symbol,
+            scm_procedure,
+        );
+    }
+    if (C.scm_is_a_p(scm_wl_object, View.scm_view_type)) {
+        return View.scmToView(scm_wl_object).bindScmFunction(
             scm_event_symbol,
             scm_procedure,
         );

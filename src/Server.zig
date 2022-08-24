@@ -11,7 +11,7 @@ const C = @import("C.zig");
 const ally = std.heap.c_allocator;
 
 const Output = @import("Output.zig");
-// const View = @import("View.zig");
+const View = @import("View.zig");
 // const Keyboard = @import("Keyboard.zig");
 // const Cursor = @import("Cursor.zig");
 
@@ -51,6 +51,14 @@ fn scm_initModule(_: ?*anyopaque) callconv(.C) void {
     );
 
     _ = C.scm_c_define_gsubr(
+        "server-views",
+        1,
+        0,
+        0,
+        @intToPtr(?*anyopaque, @ptrToInt(scm_serverViews)),
+    );
+
+    _ = C.scm_c_define_gsubr(
         "server-socket",
         1,
         0,
@@ -68,14 +76,22 @@ fn scm_initModule(_: ?*anyopaque) callconv(.C) void {
 
     // scm_c_export is broken with @cImport so we use
     // scm_module_export instead.
+    var scm_exports = C.SCM_EOL;
+    for ([_][:0]const u8{
+        "make-server",
+        "server-outputs",
+        "server-views",
+        "server-socket",
+        "run-server",
+    }) |symbol_name| {
+        scm_exports = C.scm_cons(
+            C.scm_from_utf8_symbol(symbol_name.ptr),
+            scm_exports,
+        );
+    }
     _ = C.scm_module_export(
         C.scm_current_module(),
-        C.scm_list_4(
-            C.scm_from_utf8_symbol("make-server"),
-            C.scm_from_utf8_symbol("server-outputs"),
-            C.scm_from_utf8_symbol("server-socket"),
-            C.scm_from_utf8_symbol("run-server"),
-        ),
+        scm_exports,
     );
 }
 
@@ -96,6 +112,21 @@ fn scm_serverOutputs(scm_server: C.SCM) callconv(.C) C.SCM {
     while (iter.next()) |output| {
         list = C.scm_cons(
             Output.outputToScm(output),
+            list,
+        );
+    }
+
+    return list;
+}
+
+fn scm_serverViews(scm_server: C.SCM) callconv(.C) C.SCM {
+    const server = scmToServer(scm_server);
+
+    var list = C.SCM_EOL;
+    var iter = server.views.iterator(.reverse);
+    while (iter.next()) |view| {
+        list = C.scm_cons(
+            View.viewToScm(view),
             list,
         );
     }
@@ -160,13 +191,14 @@ xdg_shell: *wlr.XdgShell,
 seat: *wlr.Seat,
 
 outputs: wl.list.Head(Output, "link") = undefined,
-// views: wl.list.Head(View, "link") = undefined,
+views: wl.list.Head(View, "link") = undefined,
 // keyboards: wl.list.Head(Keyboard, "link") = undefined,
 // cursor: Cursor = undefined,
 
 new_output_listener: wl.Listener(*wlr.Output),
-new_output_function: ?C.SCM = null,
-// new_xdg_surface_listener: wl.Listener(*wlr.XdgSurface),
+on_new_output_function: ?C.SCM = null,
+new_xdg_surface_listener: wl.Listener(*wlr.XdgSurface),
+on_new_view_function: ?C.SCM = null,
 // new_input_device_listener: wl.Listener(*wlr.InputDevice),
 
 pub fn create() !*Server {
@@ -177,7 +209,6 @@ pub fn create() !*Server {
     const backend = try wlr.Backend.autocreate(wl_server);
     const renderer = try wlr.Renderer.autocreate(backend);
 
-    // roundabout so I don't have to deal with deallocation
     var buf: [11]u8 = undefined;
     const socket = try wl_server.addSocketAuto(&buf);
 
@@ -196,14 +227,16 @@ pub fn create() !*Server {
         .new_output_listener = wl.Listener(*wlr.Output).init(
             onNewOutput,
         ),
-        // .new_xdg_surface_listener = wl.Listener(*wlr.XdgSurface).init(
-        //     onNewXdgSurface,
-        // ),
+        .new_xdg_surface_listener = wl.Listener(*wlr.XdgSurface).init(
+            onNewXdgSurface,
+        ),
         // .new_input_device_listener = wl.Listener(*wlr.InputDevice).init(
         //     onNewInputDevice,
         // ),
     };
 
+    // Copy the socket name into our server struct so it isn't
+    // destroyed with our stack.
     for (socket[0..socket.len]) |b, i| self.socket[i] = b;
 
     try renderer.initServer(wl_server);
@@ -213,11 +246,11 @@ pub fn create() !*Server {
     _ = try wlr.DataDeviceManager.create(self.wl_server);
 
     self.backend.events.new_output.add(&self.new_output_listener);
-    // self.xdg_shell.events.new_surface.add(&self.new_xdg_surface_listener);
+    self.xdg_shell.events.new_surface.add(&self.new_xdg_surface_listener);
     // self.backend.events.new_input.add(&self.new_input_device_listener);
 
     self.outputs.init();
-    // self.views.init();
+    self.views.init();
     // self.keyboards.init();
     // self.cursor.init(self.seat);
 
@@ -231,10 +264,6 @@ pub fn destroy(self: *Server) void {
     ally.destroy(self);
 }
 
-const Events = enum {
-    new_output,
-};
-
 pub fn bindScmFunction(
     self: *Server,
     scm_event_symbol: C.SCM,
@@ -242,13 +271,14 @@ pub fn bindScmFunction(
 ) C.SCM {
     inline for ([_][2][:0]const u8{
         // symbol name   field name
-        .{ "new-output", "new_output_function" },
+        .{ "new-output", "on_new_output_function" },
+        .{ "new-view", "on_new_view_function" },
     }) |event| {
         if (C.SCM_BOOL_T == C.scm_eqv_p(
             scm_event_symbol,
             C.scm_from_utf8_symbol(event[0].ptr),
         )) {
-            if (self.new_output_function) |scm_fn| {
+            if (@field(self, event[1])) |scm_fn| {
                 _ = C.scm_gc_unprotect_object(scm_fn);
             }
             @field(self, event[1]) = C.scm_gc_protect_object(
@@ -295,12 +325,65 @@ fn onNewOutput(
     self.outputs.prepend(output);
     self.output_layout.addAuto(wlr_output);
 
-    // FIXME: handle errors so a scheme error doesn't cause a crash.
-    if (self.new_output_function) |scm_fn| {
+    // FIXME: handle guile errors so a scheme error doesn't cause a
+    // crash.
+    if (self.on_new_output_function) |scm_fn| {
         _ = C.scm_call_2(
             scm_fn,
             serverToScm(self),
             Output.outputToScm(output),
         );
+    }
+}
+
+fn onNewXdgSurface(
+    listener: *wl.Listener(*wlr.XdgSurface),
+    xdg_surface: *wlr.XdgSurface,
+) void {
+    const self = @fieldParentPtr(Server, "new_xdg_surface_listener", listener);
+
+    switch (xdg_surface.role) {
+        .toplevel => {
+            const view = View.create(self, xdg_surface) catch |err| {
+                std.log.err("Failed to create view:\n{}", .{err});
+                if (@errorReturnTrace()) |trace| {
+                    std.debug.dumpStackTrace(trace.*);
+                }
+                return;
+            };
+
+            self.views.prepend(view);
+
+            // FIXME: handle guile errors so a scheme error doesn't
+            // cause a crash.
+            if (self.on_new_view_function) |scm_fn| {
+                _ = C.scm_call_2(
+                    scm_fn,
+                    serverToScm(self),
+                    View.viewToScm(view),
+                );
+            }
+        },
+        .popup => {
+            // Since we only support XDG shell this is a safe assert
+            const parent = wlr.XdgSurface.fromWlrSurface(
+                xdg_surface.role_data.popup.parent.?,
+            );
+            const parent_node = @intToPtr(
+                ?*wlr.SceneNode,
+                parent.data,
+            ) orelse return;
+            const scene_node = parent_node.createSceneXdgSurface(
+                xdg_surface,
+            ) catch |err| {
+                std.log.err("Failed to allocate XDG popup node:\n{}", .{err});
+                if (@errorReturnTrace()) |trace| {
+                    std.debug.dumpStackTrace(trace.*);
+                }
+                return;
+            };
+            xdg_surface.data = @ptrToInt(scene_node);
+        },
+        .none => unreachable,
     }
 }

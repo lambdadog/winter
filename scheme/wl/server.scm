@@ -2,11 +2,13 @@
   #:use-module ((wl server internal)
 		#:select (make-server
 			  server-outputs
+			  server-views
 			  server-socket
 			  run-server)
 		#:prefix internal:)
   #:export (make-server
 	    server-outputs
+	    server-views
 	    server-socket
 	    run-server))
 
@@ -15,14 +17,18 @@
   (internal:make-server))
 
 (define (server-outputs server)
-  "Returns the list of outputs attached to the wayland server."
+  "Returns the list of outputs attached to SERVER."
   (internal:server-outputs server))
 
+(define (server-views server)
+  "Returns the list of views held by SERVER. This includes unmapped and
+disabled views."
+  (internal:server-views server))
+
 (define (server-socket server)
-  "Returns the wayland server's socket name."
+  "Returns SERVER's socket name."
   (internal:server-socket server))
 
 (define (run-server server)
-  "Runs the wayland server passed to it as an argument. Does not
-return until the wayland server is stopped."
+  "Runs SERVER. Does not return until SERVER stops."
   (internal:run-server server))
