@@ -30,17 +30,20 @@
   (let ([server (server)])
     (wl:bind! server 'new-output new-output-fn)
     (wl:bind! server 'new-view new-view-fn)
-    (display "Running on WAYLAND_DISPLAY=")
-    (display (server-socket server))
-    (newline)
+
+    (begin
+      (display "Running on WAYLAND_DISPLAY=")
+      (display (server-socket server))
+      (newline))
+
     (run-server server)))
 
 (define (new-output-fn server output)
   (display "New output: ") (pp output))
 
 (define (new-view-fn server view)
-  (display "New view: ") (pp view)
-  (wl:bind! view 'map view-map-fn))
+  (wl:bind! view 'map view-map-fn)
+  (display "New view: ") (pp view))
 
 (define (view-map-fn view)
   (view-enable! view))
