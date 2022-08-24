@@ -19,8 +19,6 @@ fn scm_init() void {
     Server.scm_init();
     Output.scm_init();
     View.scm_init();
-
-    // _ = C.scm_c_primitive_load("./scheme/init.scm");
 }
 
 fn scm_initModule(_: ?*anyopaque) callconv(.C) void {
