@@ -97,8 +97,13 @@ fn scm_initModule(_: ?*anyopaque) callconv(.C) void {
 
 fn scm_makeServer() callconv(.C) C.SCM {
     const server = Server.create() catch {
-        // TODO: return scheme error
-        return C.SCM_BOOL_F;
+        C.scm_error(
+            C.scm_misc_error_key,
+            "make-server",
+            "Failed to create server",
+            null,
+            C.SCM_BOOL_F,
+        );
     };
 
     return serverToScm(server);
@@ -144,8 +149,13 @@ fn scm_runServer(scm_server: C.SCM) callconv(.C) C.SCM {
     const server = scmToServer(scm_server);
 
     server.backend.start() catch {
-        // TODO: return scheme error
-        return C.SCM_BOOL_F;
+        C.scm_error(
+            C.scm_misc_error_key,
+            "run-server",
+            "Failed to start server backend",
+            null,
+            C.SCM_BOOL_F,
+        );
     };
 
     server.wl_server.run();
