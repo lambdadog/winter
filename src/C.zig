@@ -5,5 +5,7 @@ const C = @cImport({
     @cInclude("libguile.h");
 });
 
-pub extern fn scm_is_a_p(C.SCM, C.SCM) bool;
 pub usingnamespace C;
+
+// glue.c
+pub extern fn scm_is_a_p(C.SCM, C.SCM) bool;
