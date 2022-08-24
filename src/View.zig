@@ -231,6 +231,8 @@ fn onDestroy(
     self.unmap_listener.link.remove();
     self.destroy_listener.link.remove();
 
+    self.link.remove();
+
     ally.destroy(self);
 }
 
