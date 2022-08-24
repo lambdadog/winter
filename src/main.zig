@@ -8,6 +8,8 @@ const C = @import("C.zig");
 const Server = @import("Server.zig");
 const Output = @import("Output.zig");
 const View = @import("View.zig");
+const Cursor = @import("Cursor.zig");
+const Keyboard = @import("Keyboard.zig");
 
 const ally = std.heap.c_allocator;
 
@@ -21,6 +23,8 @@ fn scm_init() void {
     Server.scm_init();
     Output.scm_init();
     View.scm_init();
+    Cursor.scm_init();
+    Keyboard.scm_init();
 }
 
 fn scm_initModule(_: ?*anyopaque) callconv(.C) void {

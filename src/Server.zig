@@ -12,7 +12,7 @@ const ally = std.heap.c_allocator;
 
 const Output = @import("Output.zig");
 const View = @import("View.zig");
-// const Keyboard = @import("Keyboard.zig");
+const Keyboard = @import("Keyboard.zig");
 const Cursor = @import("Cursor.zig");
 
 pub var scm_server_type: C.SCM = undefined;
@@ -204,7 +204,7 @@ seat: *wlr.Seat,
 
 outputs: wl.list.Head(Output, "link") = undefined,
 views: wl.list.Head(View, "link") = undefined,
-// keyboards: wl.list.Head(Keyboard, "link") = undefined,
+keyboards: wl.list.Head(Keyboard, "link") = undefined,
 cursor: Cursor = undefined,
 
 new_output_listener: wl.Listener(*wlr.Output),
@@ -263,7 +263,7 @@ pub fn create() !*Server {
 
     self.outputs.init();
     self.views.init();
-    // self.keyboards.init();
+    self.keyboards.init();
     try self.cursor.init(self);
 
     return self;
@@ -444,6 +444,17 @@ fn onNewInput(
 ) void {
     const self = @fieldParentPtr(Server, "new_input_listener", listener);
     switch (input_device.type) {
+        .keyboard => {
+            const keyboard = Keyboard.create(self, input_device) catch |err| {
+                std.log.err("Failed to create keyboard:\n{}", .{err});
+                if (@errorReturnTrace()) |trace| {
+                    std.debug.dumpStackTrace(trace.*);
+                }
+                return;
+            };
+
+            self.keyboards.prepend(keyboard);
+        },
         .pointer => self.cursor.attachInputDevice(input_device),
         else => {},
     }
