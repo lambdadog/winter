@@ -4,6 +4,7 @@ const wlr = @import("wlroots");
 const C = @import("C.zig");
 
 const Server = @import("Server.zig");
+const Output = @import("Output.zig");
 
 const ally = std.heap.c_allocator;
 
